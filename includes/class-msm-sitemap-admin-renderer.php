@@ -2,10 +2,12 @@
 
 class Metro_Sitemap_Admin_Renderer {
 
+	protected string $screen_name;
 	protected string $partition_name;
 
-	public function __construct( string $name = '' ) {
+	public function __construct( string $name = '', string $nick = 'Sitemap' ) {
 		$this->partition_name = $name;
+		$this->screen_name = $nick;
 	}
 
 	/**
@@ -27,7 +29,7 @@ class Metro_Sitemap_Admin_Renderer {
 		// Start outputting html
 		echo '<div class="wrap">';
 		screen_icon();
-		echo '<h2>' . __( 'Sitemap', 'metro-sitemaps' ) . '</h2>';
+		echo '<h2>' . __( $this->screen_name, 'metro-sitemaps' ) . '</h2>';
 
 		if ( ! Metro_Sitemap::is_blog_public() ) {
 			Metro_Sitemap::show_action_message( __( 'Oops! Sitemaps are not supported on private blogs. Please make your blog public and try again.', 'metro-sitemaps' ), 'error' );

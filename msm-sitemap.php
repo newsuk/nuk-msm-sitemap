@@ -12,6 +12,7 @@ Requires PHP: 7.4
 if ( defined( 'WP_CLI' ) && true === WP_CLI ) {
 	require dirname( __FILE__ ) . '/includes/wp-cli.php';
 }
+require dirname( __FILE__ ) . '/includes/class-msm-sitemap-admin-renderer.php';
 
 class Metro_Sitemap {
 
@@ -116,7 +117,18 @@ class Metro_Sitemap {
 			$page_hooks = array_map(
 				function ( string $name ) {
 					$polite_name = empty( $name ) ? __( 'Sitemap', 'metro-sitemaps' ) : implode( ' ', [ ucfirst( $name ), __( 'Sitemap', 'metro-sitemaps' ) ] );
-					return add_management_page( $polite_name, $polite_name, 'manage_options', 'metro-sitemap', [ new Metro_Sitemap_Admin_Renderer( $name ), 'render_sitemap_options_page' ] );
+					return add_management_page(
+						$polite_name,
+						$polite_name,
+						'manage_options',
+						implode( '-',
+							array_merge(
+								[ 0 => 'metro', 2 => 'sitemap' ],
+								empty( $name ) ? [] : [ 1 => $name ]
+							)
+						),
+						[ new Metro_Sitemap_Admin_Renderer( $name, $polite_name ), 'render_sitemap_options_page' ]
+					);
 				},
 				$partitions
 			);
