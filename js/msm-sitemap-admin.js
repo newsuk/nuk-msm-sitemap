@@ -7,7 +7,7 @@ jQuery( document ).ready( function() {
 
 	// Move the tooltip to body
 	jQuery( '#tooltip' ).appendTo( 'body' );
-	
+
 	var plot_options = {
 		xaxis: {
 			mode: 'time',
@@ -34,7 +34,7 @@ jQuery( document ).ready( function() {
 
 	};
 
-	var data = [ 
+	var data = [
 		{
 			data: [],
 			bars: {
@@ -57,6 +57,7 @@ jQuery( document ).ready( function() {
 	function msm_query_sitemap_counts() {
 		var data = {
 			action: 'msm-sitemap-get-sitemap-counts',
+			partition: jQuery( '#sitemap-partition' ).val() || '',
 			_wpnonce: jQuery( '#_wpnonce' ).val(),
 		};
 
@@ -94,7 +95,7 @@ jQuery( document ).ready( function() {
 		// Update the plot
 		data[0].data = formatted_data;
 		jQuery.plot( placeholder, data, plot_options );
-		
+
 		// Update the maxima information
 		update_stats_maximum();
 	}
