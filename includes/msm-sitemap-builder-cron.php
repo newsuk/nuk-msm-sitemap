@@ -58,7 +58,7 @@ class MSM_Sitemap_Builder_Cron {
 		if ( (bool) get_option( 'msm_stop_processing' ) === true && (bool) get_option( 'msm_sitemap_create_in_progress' ) === true ) {
 			return __( 'Halting', 'metro-sitemaps' );
 		}
-			
+
 		return $status;
 	}
 
@@ -157,9 +157,11 @@ class MSM_Sitemap_Builder_Cron {
 
 		wp_schedule_single_event(
 			$time,
+
 			'msm_cron_generate_sitemap_for_year_month_day',
 			array(
 				array(
+					'partition' => apply_filters( 'msm_sitemap_partition', '' ),
 					'year' => (int) $year,
 					'month' => (int) $month,
 					'day' => (int) $day,
@@ -207,6 +209,7 @@ class MSM_Sitemap_Builder_Cron {
 			'msm_cron_generate_sitemap_for_year',
 			array(
 				array(
+					'partition' => apply_filters( 'msm_sitemap_partition', '' ),
 					'year' => (int) $next_year,
 					),
 				)
@@ -218,6 +221,8 @@ class MSM_Sitemap_Builder_Cron {
 	 * @param mixed[] $args
 	 */
 	public static function generate_sitemap_for_year( $args ) {
+		self::switch_partition( $args );
+
 		$is_partial_or_running = get_option( 'msm_months_to_process' );
 
 		$year = $args['year'];
@@ -241,6 +246,7 @@ class MSM_Sitemap_Builder_Cron {
 			'msm_cron_generate_sitemap_for_year_month',
 			array(
 				array(
+					'partition' => $args['partition'] ?? '',
 					'year' => (int) $year,
 					'month' => (int) $next_month,
 					),
@@ -253,6 +259,8 @@ class MSM_Sitemap_Builder_Cron {
 	 * @param mixed[] $args
 	 */
 	public static function generate_sitemap_for_year_month( $args ) {
+		self::switch_partition( $args );
+
 		$is_partial_or_running = get_option( 'msm_days_to_process' );
 
 		$year = $args['year'];
@@ -285,6 +293,7 @@ class MSM_Sitemap_Builder_Cron {
 			'msm_cron_generate_sitemap_for_year_month_day',
 			array(
 				array(
+					'partition' => $args['partition'] ?? '',
 					'year' => (int) $year,
 					'month' => (int) $month,
 					'day' => (int) $next_day,
@@ -299,6 +308,8 @@ class MSM_Sitemap_Builder_Cron {
 	 * @param mixed[] $args
 	 */
 	public static function generate_sitemap_for_year_month_day( $args ) {
+		self::switch_partition( $args );
+
 		$year = $args['year'];
 		$month = $args['month'];
 		$day = $args['day'];
@@ -369,4 +380,10 @@ class MSM_Sitemap_Builder_Cron {
 
 	}
 
+	static function switch_partition( array $args ): void {
+		if ( ! isset( $args['partition'] ) ) {
+			return;
+		}
+		do_action( 'msm_sitemap_select_partition', $args['partition'] );
+	}
 }
