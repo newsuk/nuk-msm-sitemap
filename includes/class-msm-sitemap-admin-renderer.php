@@ -42,13 +42,15 @@ class Metro_Sitemap_Admin_Renderer {
 			foreach ( $actions as $slug => $action ) {
 				if ( $action['text'] !== $_POST['action'] ) continue;
 
+				do_action( 'msm_sitemap_select_partition', sanitize_key( $_POST['partition'] ?? $this->partition_name ) );
+
 				do_action( 'msm_sitemap_action-' . $slug );
 				break;
 			}
 		}
 
 		// All the settings we need to read to display the page
-		$sitemap_create_in_progress = (bool) get_option( 'msm_sitemap_create_in_progress' ) === true;
+		$sitemap_create_in_progress = (bool) get_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix() ) === true;
 		$sitemap_update_last_run = get_option( 'msm_sitemap_update_last_run' . Metro_Sitemap::get_partition_suffix() );
 
 		// Determine sitemap status text

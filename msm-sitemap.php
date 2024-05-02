@@ -117,16 +117,16 @@ class Metro_Sitemap {
 			$page_hooks = array_map(
 				function ( string $name ) {
 					$polite_name = empty( $name ) ? __( 'Sitemap', 'metro-sitemaps' ) : implode( ' ', [ ucfirst( $name ), __( 'Sitemap', 'metro-sitemaps' ) ] );
+					$parts = [ 0 => 'metro', 2 => 'sitemap' ];
+					if ( ! empty( $name ) ) {
+						$parts[1] = $name;
+					}
+					ksort( $parts );
 					return add_management_page(
 						$polite_name,
 						$polite_name,
 						'manage_options',
-						implode( '-',
-							array_merge(
-								[ 0 => 'metro', 2 => 'sitemap' ],
-								empty( $name ) ? [] : [ 1 => $name ]
-							)
-						),
+						implode( '-', $parts ),
 						[ new Metro_Sitemap_Admin_Renderer( $name, $polite_name ), 'render_sitemap_options_page' ]
 					);
 				},
@@ -287,12 +287,15 @@ class Metro_Sitemap {
 	 * Add cron jobs required to generate these sitemaps
 	 */
 	public static function sitemap_init_cron() {
-		if ( self::is_blog_public() && ! wp_next_scheduled( 'msm_cron_update_sitemap' ) ) {
+		if ( self::is_blog_public() ) {
 			$partitions = apply_filters( 'msm_sitemap_partitions', [''] );
 			array_walk(
 				$partitions,
 				function ( string $partition_name ) {
-					wp_schedule_event( time(), 'ms-sitemap-15-min-cron-interval', 'msm_cron_update_sitemap', [ $partition_name ] );
+					$args = [ $partition_name ];
+					if ( ! wp_next_scheduled( 'msm_cron_update_sitemap', $args ) ) {
+						wp_schedule_event( time(), 'ms-sitemap-15-min-cron-interval', 'msm_cron_update_sitemap', $args );
+					}
 				}
 			);
 		}
