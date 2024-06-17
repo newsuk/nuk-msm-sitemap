@@ -314,8 +314,18 @@ class Metro_Sitemap {
 	 * Add cron jobs required to generate these sitemaps
 	 */
 	public static function sitemap_init_cron() {
-		if ( self::is_blog_public() && ! wp_next_scheduled( 'msm_cron_update_sitemap' ) ) {
-			wp_schedule_event( time(), 'ms-sitemap-15-min-cron-interval', 'msm_cron_update_sitemap' );
+		if ( self::is_blog_public() ) {
+			$partitions = apply_filters( 'msm_sitemap_partitions', [''] );
+			array_walk(
+				$partitions,
+				function ( string $partition_name ) {
+					$args = [ $partition_name ];
+					if ( wp_next_scheduled( 'msm_cron_update_sitemap', $args ) ) {
+						return;
+					}
+					wp_schedule_event( time(), 'ms-sitemap-15-min-cron-interval', 'msm_cron_update_sitemap', $args );
+				}
+			);
 		}
 	}
 
