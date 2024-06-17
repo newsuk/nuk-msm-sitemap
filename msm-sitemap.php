@@ -719,9 +719,10 @@ class Metro_Sitemap {
 			$sitemaps = $wpdb->get_col( $query );
 		} else {
 			$args = [
-				'post_type' => Metro_Sitemap::SITEMAP_CPT,
-				'orderby'   => 'post_date',
-				'order'     => 'DESC',
+				'post_type'   => Metro_Sitemap::SITEMAP_CPT,
+				'orderby'     => 'post_date',
+				'order'       => 'DESC',
+				'numberposts' => -1,
 			];
 			if ( is_numeric( $year ) ) {
 				$args['m'] = $year;
