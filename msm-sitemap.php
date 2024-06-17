@@ -12,6 +12,7 @@ Requires PHP: 7.4
 if ( defined( 'WP_CLI' ) && true === WP_CLI ) {
 	require dirname( __FILE__ ) . '/includes/wp-cli.php';
 }
+require dirname( __FILE__ ) . '/includes/class-msm-sitemap-admin-renderer.php';
 
 class Metro_Sitemap {
 
@@ -113,7 +114,38 @@ class Metro_Sitemap {
 	 * Register admin menu for sitemap
 	 */
 	public static function metro_sitemap_menu() {
-		$page_hook = add_management_page( __( 'Sitemap', 'metro-sitemaps' ), __( 'Sitemap', 'metro-sitemaps' ), 'manage_options', 'metro-sitemap', array( __CLASS__, 'render_sitemap_options_page' ) );
+		$partitions = apply_filters( 'msm_sitemap_partitions', ['default'] );
+		if ( 0 === count( $partitions ) ) {
+			return;
+		} elseif ( 1 < count( $partitions ) ) {
+			$page_hooks = array_map(
+				function ( string $name ) {
+					$polite_name = empty( $name ) ? __( 'Sitemap', 'metro-sitemaps' ) : implode( ' ', [ ucfirst( $name ), __( 'Sitemap', 'metro-sitemaps' ) ] );
+					$parts = [ 0 => 'metro', 2 => 'sitemap' ];
+					if ( ! empty( $name ) ) {
+						$parts[1] = $name;
+					}
+					ksort( $parts );
+					return add_management_page(
+						$polite_name,
+						$polite_name,
+						'manage_options',
+						implode( '-', $parts ),
+						[ new Metro_Sitemap_Admin_Renderer( $name, $polite_name ), 'render_sitemap_options_page' ]
+					);
+				},
+				$partitions
+			);
+			array_walk(
+				$page_hooks,
+				function( string $hook ) {
+					add_action( 'admin_print_scripts-' . $hook, array( __CLASS__, 'add_admin_scripts' ) );
+				}
+			);
+			return;
+		}
+
+		$page_hook = add_management_page( __( 'Sitemap', 'metro-sitemaps' ), __( 'Sitemap', 'metro-sitemaps' ), 'manage_options', 'metro-sitemap', array( new Metro_Sitemap_Admin_Renderer(), 'render_sitemap_options_page' ) );
 		add_action( 'admin_print_scripts-' . $page_hook, array( __CLASS__, 'add_admin_scripts' ) );
 	}
 
@@ -137,6 +169,10 @@ class Metro_Sitemap {
 		if ( isset( $_REQUEST['num_days'] ) ) {
 			$n = intval( $_REQUEST['num_days'] );
 		}
+		if ( isset( $_REQUEST['partition'] ) ) {
+			$name = sanitize_key( $_REQUEST['partition'] );
+			do_action( 'msm_sitemap_select_partition', $name );
+		}
 
 		$data = array(
 			'total_indexed_urls'   => number_format( Metro_Sitemap::get_total_indexed_url_count() ),
@@ -145,73 +181,6 @@ class Metro_Sitemap {
 		);
 
 		wp_send_json( $data );
-	}
-
-	/**
-	 * Render admin options page
-	 */
-	public static function render_sitemap_options_page() {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			wp_die( __( 'You do not have sufficient permissions to access this page.', 'metro-sitemaps' ) );
-		}
-
-		// Array of possible user actions
-		$actions = apply_filters( 'msm_sitemap_actions', array() );
-
-		// Start outputting html
-		echo '<div class="wrap">';
-		screen_icon();
-		echo '<h2>' . __( 'Sitemap', 'metro-sitemaps' ) . '</h2>';
-
-		if ( ! self::is_blog_public() ) {
-			self::show_action_message( __( 'Oops! Sitemaps are not supported on private blogs. Please make your blog public and try again.', 'metro-sitemaps' ), 'error' );
-			echo '</div>';
-			return;
-		}
-
-		if ( isset( $_POST['action'] ) ) {
-			check_admin_referer( 'msm-sitemap-action' );
-			foreach ( $actions as $slug => $action ) {
-				if ( $action['text'] !== $_POST['action'] ) continue;
-
-				do_action( 'msm_sitemap_action-' . $slug );
-				break;
-			}
-		}
-
-		// All the settings we need to read to display the page
-		$sitemap_create_in_progress = (bool) get_option( 'msm_sitemap_create_in_progress' ) === true;
-		$sitemap_update_last_run = get_option( 'msm_sitemap_update_last_run' );
-
-		// Determine sitemap status text
-		$sitemap_create_status = apply_filters(
-			'msm_sitemap_create_status',
-			$sitemap_create_in_progress ? __( 'Running', 'metro-sitemaps' ) : __( 'Not Running', 'metro-sitemaps' )
-		);
-
-		?>
-		<div class="stats-container">
-			<div class="stats-box"><strong id="sitemap-count"><?php echo number_format( Metro_Sitemap::count_sitemaps() ); ?></strong><?php esc_html_e( 'Sitemaps', 'metro-sitemaps' ); ?></div>
-			<div class="stats-box"><strong id="sitemap-indexed-url-count"><?php echo number_format( Metro_Sitemap::get_total_indexed_url_count() ); ?></strong><?php esc_html_e( 'Indexed URLs', 'metro-sitemaps' ); ?></div>
-			<div class="stats-footer"><span><span class="noticon noticon-time"></span><?php esc_html_e( 'Updated', 'metro-sitemaps' ); ?> <strong><?php echo human_time_diff( $sitemap_update_last_run ); ?> <?php esc_html_e( 'ago', 'metro-sitemaps' ) ?></strong></span></div>
-		</div>
-
-		<h3><?php esc_html_e( 'Latest Sitemaps', 'metro-sitemaps' ); ?></h3>
-		<div class="stats-container stats-placeholder"></div>
-		<div id="stats-graph-summary"><?php printf( __( 'Max: %s on %s. Showing the last %s days.', 'metro-sitemaps' ), '<span id="stats-graph-max"></span>', '<span id="stats-graph-max-date"></span>', '<span id="stats-graph-num-days"></span>' ); ?></div>
-
-		<h3><?php esc_html_e( 'Generate', 'metro-sitemaps' ); ?></h3>
-		<p><strong><?php esc_html_e( 'Sitemap Create Status:', 'metro-sitemaps' ) ?></strong> <?php echo esc_html( $sitemap_create_status ); ?></p>
-		<form action="<?php echo menu_page_url( 'metro-sitemap', false ) ?>" method="post" style="float: left;">
-			<?php wp_nonce_field( 'msm-sitemap-action' ); ?>
-			<?php foreach ( $actions as $action ):
-				if ( ! $action['enabled'] ) continue; ?>
-				<input type="submit" name="action" class="button-secondary" value="<?php echo esc_attr( $action['text'] ); ?>">
-			<?php endforeach; ?>
-		</form>
-		</div>
-		<div id="tooltip"><strong class="content"></strong> <?php esc_html_e( 'indexed urls', 'metro-sitemaps' ); ?></div>
-		<?php
 	}
 
 	/**
@@ -234,8 +203,16 @@ class Metro_Sitemap {
 	 * @return int The number of sitemaps that have been generated
 	 */
 	public static function count_sitemaps() {
-		$count = wp_count_posts( Metro_Sitemap::SITEMAP_CPT );
-		return (int) $count->publish;
+		if ( self::use_custom_queries() ) {
+			$count = wp_count_posts( Metro_Sitemap::SITEMAP_CPT );
+			return (int) $count->publish;
+		}
+		$args = [
+			'post_type'      => Metro_Sitemap::SITEMAP_CPT,
+			'post_status'    => 'publish',
+		];
+		$query = new \WP_Query( $args );
+		return (int) $query->found_posts;
 	}
 
 	/**
@@ -244,7 +221,7 @@ class Metro_Sitemap {
 	 * @return int The number of total number URLs indexed
 	 */
 	public static function get_total_indexed_url_count() {
-		return intval( get_option( 'msm_sitemap_indexed_url_count', 0 ) );
+		return intval( get_option( 'msm_sitemap_indexed_url_count' . self::get_partition_suffix(), 0 ) );
 	}
 
 	/**
@@ -508,7 +485,7 @@ class Metro_Sitemap {
 		// For migration: in case the previous version used an array for this option
 		if ( is_array( $total_url_count ) ) {
 			$total_url_count = array_sum( $total_url_count );
-			update_option( 'msm_sitemap_indexed_url_count', $total_url_count, false );
+			update_option( 'msm_sitemap_indexed_url_count' . self::get_partition_suffix(), $total_url_count, false );
 		}
 
 		// SimpleXML doesn't allow us to define namespaces using addAttribute, so we need to specify them in the construction instead.
@@ -574,7 +551,7 @@ class Metro_Sitemap {
 		}
 
 		// Update indexed url counts
-		update_option( 'msm_sitemap_indexed_url_count', $total_url_count, false );
+		update_option( 'msm_sitemap_indexed_url_count' . self::get_partition_suffix(), $total_url_count, false );
 
 		wp_reset_postdata();
 	}
@@ -599,7 +576,7 @@ class Metro_Sitemap {
 
 		$total_url_count = self::get_total_indexed_url_count();
 		$total_url_count -= intval( get_post_meta( $sitemap_id, 'msm_indexed_url_count', true ) );
-		update_option( 'msm_sitemap_indexed_url_count', $total_url_count, false );
+		update_option( 'msm_sitemap_indexed_url_count' . self::get_partition_suffix(), $total_url_count, false );
 
 		wp_delete_post( $sitemap_id, true );
 		do_action( 'msm_delete_sitemap_post', $sitemap_id, $year, $month, $day );
@@ -635,7 +612,7 @@ class Metro_Sitemap {
 	public static function get_last_modified_posts() {
 		global $wpdb;
 
-		$sitemap_last_run = get_option( 'msm_sitemap_update_last_run', false );
+		$sitemap_last_run = get_option( 'msm_sitemap_update_last_run' . self::get_partition_suffix() , false );
 
 		$date = date( 'Y-m-d H:i:s', ( current_time( 'timestamp', 1 ) - 3600 ) ); // posts changed within the last hour
 
@@ -680,7 +657,11 @@ class Metro_Sitemap {
 	/**
 	 * Update the sitemap with changes from recently modified posts
 	 */
-	public static function update_sitemap_from_modified_posts() {
+	public static function update_sitemap_from_modified_posts( $partition_name = '' ) {
+		if ( ! empty( $partition_name ) ) {
+			do_action( 'msm_sitemap_select_partition', $partition_name );
+		}
+
 		$time = current_time( 'timestamp', 1 );
 		$last_modified_posts = self::get_last_modified_posts();
 		$dates = self::get_post_dates( $last_modified_posts );
@@ -697,7 +678,7 @@ class Metro_Sitemap {
 
 			do_action( 'msm_update_sitemap_for_year_month_date', array( $year, $month, $day ), $time );
 		}
-		update_option( 'msm_sitemap_update_last_run', current_time( 'timestamp', 1 ), false );
+		update_option( 'msm_sitemap_update_last_run' . self::get_partition_suffix(), current_time( 'timestamp', 1 ), false );
 	}
 
 	/**
