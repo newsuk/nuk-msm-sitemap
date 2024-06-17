@@ -61,6 +61,10 @@ class Metro_Sitemap {
 		return ( empty( $partition ) ? '' : "-$partition" );
 	}
 
+	public static function max_sitemap_length(): int {
+		return apply_filters( 'msm_sitemap_max_sitemap_length', get_option( 'msm_sitemap_max_sitemap_length', 365 * 3) );
+	}
+
 	/**
 	 * Register 15 minute cron interval for latest articles
 	 * @param array[] $schedules
@@ -722,7 +726,7 @@ class Metro_Sitemap {
 				'post_type'   => Metro_Sitemap::SITEMAP_CPT,
 				'orderby'     => 'post_date',
 				'order'       => 'DESC',
-				'numberposts' => -1,
+				'numberposts' => self::max_sitemap_length(),
 			];
 			if ( is_numeric( $year ) ) {
 				$args['m'] = $year;
