@@ -34,7 +34,7 @@ class MSM_Sitemap_Builder_Cron {
 			return $actions;
 		}
 
-		$sitemap_create_in_progress = (bool) get_option( 'msm_sitemap_create_in_progress' ) === true;
+		$sitemap_create_in_progress = (bool) get_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix() ) === true;
 		$sitemap_halt_in_progress = (bool) get_option( 'msm_stop_processing' ) === true;
 
 		$actions['generate'] = array( 'text' => __( 'Generate from all articles', 'metro-sitemaps' ), 'enabled' => ! $sitemap_create_in_progress && ! $sitemap_halt_in_progress );
@@ -55,10 +55,10 @@ class MSM_Sitemap_Builder_Cron {
 	 * @return string The status text.
 	 */
 	public static function sitemap_create_status( $status ) {
-		if ( (bool) get_option( 'msm_stop_processing' ) === true && (bool) get_option( 'msm_sitemap_create_in_progress' ) === true ) {
+		if ( (bool) get_option( 'msm_stop_processing' ) === true && (bool) get_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix() ) === true ) {
 			return __( 'Halting', 'metro-sitemaps' );
 		}
-			
+
 		return $status;
 	}
 
@@ -68,13 +68,13 @@ class MSM_Sitemap_Builder_Cron {
 	 * Hooked into the msm_sitemap_actions-generate action.
 	 */
 	public static function action_generate() {
-		$sitemap_create_in_progress = (bool) get_option( 'msm_sitemap_create_in_progress' );
+		$sitemap_create_in_progress = (bool) get_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix() );
 		self::generate_full_sitemap();
 
-		if ( false !== get_option( 'msm_sitemap_create_in_progress', false ) ) {
-			update_option( 'msm_sitemap_create_in_progress', true );
+		if ( false !== get_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix(), false ) ) {
+			update_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix(), true );
 		} else {
-			add_option( 'msm_sitemap_create_in_progress', true, '', 'no' );
+			add_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix(), true, '', 'no' );
 		}
 
 		if ( empty( $sitemap_create_in_progress ) ) {
@@ -108,7 +108,7 @@ class MSM_Sitemap_Builder_Cron {
 		// Can only halt generation if sitemap creation is already in process
 		if ( (bool) get_option( 'msm_stop_processing' ) === true ) {
 			Metro_Sitemap::show_action_message( __( 'Cannot stop sitemap generation: sitemap generation is already being halted.', 'metro-sitemaps' ), 'warning' );
-		} else if ( (bool) get_option( 'msm_sitemap_create_in_progress' ) === true ) {
+		} else if ( (bool) get_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix() ) === true ) {
 			update_option( 'msm_stop_processing', true );
 			Metro_Sitemap::show_action_message( __( 'Stopping Sitemap generation', 'metro-sitemaps' ) );
 		} else {
@@ -146,10 +146,10 @@ class MSM_Sitemap_Builder_Cron {
 		delete_option( 'msm_months_to_process' );
 		delete_option( 'msm_years_to_process' );
 		delete_option( 'msm_stop_processing' );
-		delete_option( 'msm_sitemap_create_in_progress' );
+		delete_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix() );
 
 		// Delete stats options
-		delete_option( 'msm_sitemap_indexed_url_count' );
+		delete_option( 'msm_sitemap_indexed_url_count' . Metro_Sitemap::get_partition_suffix() );
 	}
 
 	public static function schedule_sitemap_update_for_year_month_date( $date, $time ) {
@@ -157,9 +157,11 @@ class MSM_Sitemap_Builder_Cron {
 
 		wp_schedule_single_event(
 			$time,
+
 			'msm_cron_generate_sitemap_for_year_month_day',
 			array(
 				array(
+					'partition' => apply_filters( 'msm_sitemap_partition', '' ),
 					'year' => (int) $year,
 					'month' => (int) $month,
 					'day' => (int) $day,
@@ -207,6 +209,7 @@ class MSM_Sitemap_Builder_Cron {
 			'msm_cron_generate_sitemap_for_year',
 			array(
 				array(
+					'partition' => apply_filters( 'msm_sitemap_partition', '' ),
 					'year' => (int) $next_year,
 					),
 				)
@@ -218,6 +221,8 @@ class MSM_Sitemap_Builder_Cron {
 	 * @param mixed[] $args
 	 */
 	public static function generate_sitemap_for_year( $args ) {
+		self::switch_partition( $args );
+
 		$is_partial_or_running = get_option( 'msm_months_to_process' );
 
 		$year = $args['year'];
@@ -241,6 +246,7 @@ class MSM_Sitemap_Builder_Cron {
 			'msm_cron_generate_sitemap_for_year_month',
 			array(
 				array(
+					'partition' => $args['partition'] ?? '',
 					'year' => (int) $year,
 					'month' => (int) $next_month,
 					),
@@ -253,6 +259,8 @@ class MSM_Sitemap_Builder_Cron {
 	 * @param mixed[] $args
 	 */
 	public static function generate_sitemap_for_year_month( $args ) {
+		self::switch_partition( $args );
+
 		$is_partial_or_running = get_option( 'msm_days_to_process' );
 
 		$year = $args['year'];
@@ -285,6 +293,7 @@ class MSM_Sitemap_Builder_Cron {
 			'msm_cron_generate_sitemap_for_year_month_day',
 			array(
 				array(
+					'partition' => $args['partition'] ?? '',
 					'year' => (int) $year,
 					'month' => (int) $month,
 					'day' => (int) $next_day,
@@ -299,6 +308,8 @@ class MSM_Sitemap_Builder_Cron {
 	 * @param mixed[] $args
 	 */
 	public static function generate_sitemap_for_year_month_day( $args ) {
+		self::switch_partition( $args );
+
 		$year = $args['year'];
 		$month = $args['month'];
 		$day = $args['day'];
@@ -327,11 +338,11 @@ class MSM_Sitemap_Builder_Cron {
 			// Allow user to bail out of the current process, doesn't remove where the job got up to
 			// or If the blog became private while sitemaps were enabled, stop here.
 			delete_option( 'msm_stop_processing' );
-			delete_option( 'msm_sitemap_create_in_progress' );
+			delete_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix() );
 			return;
 		}
 
-		update_option( 'msm_sitemap_create_in_progress', true );
+		update_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix(), true );
 
 		$days_being_processed = ( array ) get_option( 'msm_days_to_process', array() );
 		$months_being_processed = ( array ) get_option( 'msm_months_to_process', array() );
@@ -364,9 +375,15 @@ class MSM_Sitemap_Builder_Cron {
 			delete_option( 'msm_days_to_process' );
 			delete_option( 'msm_months_to_process' );
 			delete_option( 'msm_years_to_process' );
-			delete_option( 'msm_sitemap_create_in_progress' );
+			delete_option( 'msm_sitemap_create_in_progress' . Metro_Sitemap::get_partition_suffix() );
 		}
 
 	}
 
+	static function switch_partition( array $args ): void {
+		if ( ! isset( $args['partition'] ) ) {
+			return;
+		}
+		do_action( 'msm_sitemap_select_partition', $args['partition'] );
+	}
 }
