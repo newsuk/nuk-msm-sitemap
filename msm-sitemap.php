@@ -245,7 +245,8 @@ class Metro_Sitemap {
 	}
 
 	public static function is_blog_public() {
-		return ( 1 == get_option( 'blog_public' ) );
+		return ( 1 == get_option( 'blog_public' ) )
+			|| apply_filters( 'msm_sitemap_blog_public', false );
 	}
 
 	/**
