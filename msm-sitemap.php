@@ -150,9 +150,9 @@ class Metro_Sitemap {
 	}
 
 	public static function add_admin_scripts() {
-		wp_enqueue_script( 'flot', plugins_url( '/js/flot/jquery.flot.js', __FILE__ ), array( 'jquery' ) );
+		wp_enqueue_script( 'flot', plugins_url( '/js/jquery.flot.js', __FILE__ ), array( 'jquery' ) );
 		wp_enqueue_script( 'msm-sitemap-admin', plugins_url( '/js/msm-sitemap-admin.js', __FILE__ ), array( 'jquery', 'flot' ) );
-		wp_enqueue_script( 'flot-time', plugins_url( '/js/flot/jquery.flot.time.js', __FILE__ ), array( 'jquery', 'flot' ) );
+		wp_enqueue_script( 'flot-time', plugins_url( '/js/jquery.flot.time.js', __FILE__ ), array( 'jquery', 'flot' ) );
 
 		wp_enqueue_style( 'msm-sitemap-css', plugins_url( 'css/style.css', __FILE__ ) );
 		wp_enqueue_style( 'noticons', '//s0.wordpress.com/i/noticons/noticons.css' );
