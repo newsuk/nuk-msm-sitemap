@@ -301,9 +301,10 @@ class Metro_Sitemap {
 				$partitions,
 				function ( string $partition_name ) {
 					$args = [ $partition_name ];
-					if ( ! wp_next_scheduled( 'msm_cron_update_sitemap', $args ) ) {
-						wp_schedule_event( time(), 'ms-sitemap-15-min-cron-interval', 'msm_cron_update_sitemap', $args );
+					if ( wp_next_scheduled( 'msm_cron_update_sitemap', $args ) ) {
+						return;
 					}
+					wp_schedule_event( time(), 'ms-sitemap-15-min-cron-interval', 'msm_cron_update_sitemap', $args );
 				}
 			);
 		}
@@ -716,20 +717,9 @@ class Metro_Sitemap {
 
 		$xml_prefix = '<?xml version="1.0" encoding="utf-8"?>';
 
-		if ( self::use_custom_queries() ) {
-			global $wpdb;
-			// Direct query because we just want dates of the sitemap entries and this is much faster than WP_Query
-			if ( is_numeric( $year ) ) {
-				$query = $wpdb->prepare( "SELECT post_date FROM $wpdb->posts WHERE post_type = %s AND YEAR(post_date) = %s ORDER BY post_date DESC LIMIT %d", Metro_Sitemap::SITEMAP_CPT, $year, self::max_sitemap_length() );
-			} else {
-				$query = $wpdb->prepare( "SELECT post_date FROM $wpdb->posts WHERE post_type = %s ORDER BY post_date DESC LIMIT %d", Metro_Sitemap::SITEMAP_CPT, self::max_sitemap_length() );
-			}
-			$sitemaps = $wpdb->get_col( $query );
-		} else {
-			$sitemaps = self::get_sitemap_dates( $year );
-		}
-		// Sometimes duplicate sitemaps exist, lets make sure so they are not output
-		$sitemaps = array_unique( $sitemaps );
+		// Keyed by post_date, so duplicate sitemaps for the same day are collapsed.
+		$modified_dates = self::get_sitemap_modified_dates( $year );
+		$sitemaps       = array_keys( $modified_dates );
 
 		/**
 		 * Filter daily sitemaps from the index by date.
@@ -750,8 +740,33 @@ class Metro_Sitemap {
 		foreach ( $sitemaps as $sitemap_date ) {
 			$sitemap = $xml->addChild( 'sitemap' );
 			$sitemap->loc = self::build_sitemap_url( $sitemap_date ); // manually set the child instead of addChild to prevent "unterminated entity reference" warnings due to encoded ampersands http://stackoverflow.com/a/555039/169478
+
+			// The daily sitemap post is re-saved whenever any of the posts it lists change.
+			$modified = $modified_dates[ $sitemap_date ] ?? get_gmt_from_date( $sitemap_date );
+			$lastmod  = self::format_w3c_datetime( $modified );
+
+			if ( '' !== $lastmod ) {
+				$sitemap->lastmod = $lastmod;
+			}
 		}
 		return $xml->asXML();
+	}
+
+	/**
+	 * Format a MySQL GMT datetime as a W3C datetime in the site timezone.
+	 *
+	 * @param ?string $gmt_datetime Datetime in MySQL DATETIME format, GMT.
+	 *
+	 * @return string W3C datetime, or an empty string when the value cannot be parsed.
+	 */
+	public static function format_w3c_datetime( $gmt_datetime ): string {
+		if ( empty( $gmt_datetime ) || '0000-00-00 00:00:00' === $gmt_datetime ) {
+			return '';
+		}
+
+		$date_time = date_create_immutable( $gmt_datetime, new DateTimeZone( 'GMT' ) );
+
+		return false === $date_time ? '' : $date_time->setTimezone( wp_timezone() )->format( DateTimeInterface::ATOM );
 	}
 
 	/**
@@ -762,10 +777,32 @@ class Metro_Sitemap {
 	 * @return string[] dates of sitemap posts.
 	 */
 	public static function get_sitemap_dates( $year = false ): array {
+		return array_keys( self::get_sitemap_modified_dates( $year ) );
+	}
+
+	/**
+	 * Return the last modified time of each sitemap post, keyed by its post_date.
+	 *
+	 * @param ?int $year year to list.
+	 *
+	 * @return string[] post_date => post_modified_gmt, most recent first.
+	 */
+	public static function get_sitemap_modified_dates( $year = false ): array {
 		global $wpdb;
 
+		if ( self::use_custom_queries() ) {
+			// Direct query because we just want dates of the sitemap entries and this is much faster than WP_Query
+			if ( is_numeric( $year ) ) {
+				$query = $wpdb->prepare( "SELECT post_date, post_modified_gmt FROM $wpdb->posts WHERE post_type = %s AND YEAR(post_date) = %s ORDER BY post_date DESC LIMIT %d", self::SITEMAP_CPT, $year, self::max_sitemap_length() );
+			} else {
+				$query = $wpdb->prepare( "SELECT post_date, post_modified_gmt FROM $wpdb->posts WHERE post_type = %s ORDER BY post_date DESC LIMIT %d", self::SITEMAP_CPT, self::max_sitemap_length() );
+			}
+
+			return array_column( $wpdb->get_results( $query, ARRAY_A ), 'post_modified_gmt', 'post_date' );
+		}
+
 		$args = [
-			'post_type'   => Metro_Sitemap::SITEMAP_CPT,
+			'post_type'   => self::SITEMAP_CPT,
 			'orderby'     => 'post_date',
 			'order'       => 'DESC',
 			'fields'      => 'ids',
@@ -775,14 +812,23 @@ class Metro_Sitemap {
 			$args['m'] = $year;
 		}
 
-		return $wpdb->get_col(
-			sprintf(
-				"SELECT post_date FROM $wpdb->posts WHERE ID IN (%s) ORDER BY post_date DESC",
-				implode( ',', get_posts( $args ) )
-			)
+		$sitemap_ids = get_posts( $args );
+
+		if ( empty( $sitemap_ids ) ) {
+			return [];
+		}
+
+		$id_placeholders = implode( ',', array_fill( 0, count( $sitemap_ids ), '%d' ) );
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT post_date, post_modified_gmt FROM $wpdb->posts WHERE ID IN ( {$id_placeholders} ) ORDER BY post_date DESC",
+				$sitemap_ids
+			),
+			ARRAY_A
 		);
 
-		return $sitemaps;
+		return array_column( $rows, 'post_modified_gmt', 'post_date' );
 	}
 
 	/**
